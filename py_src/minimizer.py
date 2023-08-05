@@ -21,7 +21,7 @@ def get_hash(kmer):
     x = 0
     j = 0
     for i, nuc in enumerate(kmer):
-        if i%3==2: continue
+        if i%3==2: continue # skip every third nucleotide to pick up conserved patterns
         if nuc not in 'ACGT':
             return cutoff+1 # break out of loop, return hash above cutoff
         else: # A=11=3, C=10=2, G=00=0, T=01=1
@@ -46,7 +46,7 @@ def get_minimizers(seq, k=17):
 def make_index(fname):
     # collect minimizers for each reference sequence first
     minimizers_by_reference = list()
-    for si, seq in enumerate(SeqIO.parse(fname, 'fasta')):
+    for seq in SeqIO.parse(fname, 'fasta'):
         seq_str = str(seq.seq).upper().replace('-', '')
         minimizers = get_minimizers(seq_str)
         minimizers_by_reference.append({"minimizers": minimizers,
@@ -63,6 +63,7 @@ def make_index(fname):
                 index["minimizers"][m] = np.zeros(n_refs, dtype=bool)
             index["minimizers"][m][ri] = True # same as += 1<<ri
 
+        # reference will be a list in same order as the bit set
         index["references"].append(minimizer_set['meta'])
 
     return index
