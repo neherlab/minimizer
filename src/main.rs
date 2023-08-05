@@ -5,7 +5,7 @@ use bio::io::fasta::Records;
 use std::fs::File;
 use std::io::BufReader;
 
-const REFERENCE_PATH: &str = "data/sc2_reference.fasta";
+const REFERENCE_PATH: &str = "data/sc2.fasta";
 // const QUERY_PATH: &str = "data/sc2_query_long.fasta";
 const QUERY_PATH: &str = "/Users/corneliusromer/Downloads/gisaid_hcov-19_2023_04_05_18.fasta";
 
@@ -17,10 +17,11 @@ fn read_fasta(filename: &str) -> Records<BufReader<File>> {
 }
 
 // Don't inline
+// https://gist.github.com/lh3/974ced188be2f90422cc
 #[inline(never)]
 fn invertible_hash(x: u32, p: u32) -> u32 {
-    let m: u32 = 2u32.pow(p) - 1;
-    let mut x: u32 = (!x + (x << 21)) & m;
+    let m: u32 = 2u32.pow(p-1) - 1 + 2u32.pow(p-1);
+    let mut x: u32 = (!x).wrapping_add(x << 21) & m;
     x = x ^ (x >> 24);
     x = (x + (x << 3) + (x << 8)) & m;
     x = x ^ (x >> 14);
