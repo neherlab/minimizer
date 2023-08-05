@@ -1,7 +1,10 @@
 from Bio import SeqIO
 import numpy as np
 
+# minimizer cutoff. The max is 1<<32 - 1, so with 28 uses roughly 1/16 of all kmers
 cutoff = 1<<28
+
+# from lh3
 def invertible_hash(x):
     m = (1<<32) - 1
     x = (~x + (x << 21)) & m
@@ -13,16 +16,15 @@ def invertible_hash(x):
     x = (x + (x << 31)) & m
     return x
 
+# turn a kmer into an integer
 def get_hash(kmer):
     x = 0
     j = 0
-    ambig_count= 0
     for i, nuc in enumerate(kmer):
         if i%3==2: continue
         if nuc not in 'ACGT':
-            ambig_count += 1
-            return cutoff+1
-        else:
+            return cutoff+1 # break out of loop, return hash above cutoff
+        else: # A=11=3, C=10=2, G=00=0, T=01=1
             if nuc in 'AC':
                 x += 1<<j
             if nuc in 'AT':
@@ -33,16 +35,16 @@ def get_hash(kmer):
 
 def get_minimizers(seq, k=17):
     minimizers = []
+    # we know the rough number of minimizers, so we can pre-allocate the array if needed
     for i in range(len(seq) - k):
         kmer = seq[i:i+k]
         mhash = get_hash(kmer)
-        # if mhash in duplicate_minimizers:
-        #     print(kmer, i)
-        if mhash<cutoff:
+        if mhash<cutoff: # accept only hashes below cutoff --> reduces the size of the index and the number of look-ups
             minimizers.append(mhash)
     return np.unique(minimizers)
 
 def make_index(fname):
+    # collect minimizers for each reference sequence first
     minimizers_by_reference = list()
     for si, seq in enumerate(SeqIO.parse(fname, 'fasta')):
         seq_str = str(seq.seq).upper().replace('-', '')
@@ -52,13 +54,15 @@ def make_index(fname):
                                                 "description":seq.description,
                                                 "n_minimizers":len(minimizers)}})
 
+    # construct an index where each minimizer maps to the references it contains via a bit set (here boolean np array)
     index = {"minimizers": {}, "references":[]}
     n_refs = len(minimizers_by_reference)
     for ri, minimizer_set in enumerate(minimizers_by_reference):
         for m in minimizer_set["minimizers"]:
             if m not in index["minimizers"]:
                 index["minimizers"][m] = np.zeros(n_refs, dtype=bool)
-            index["minimizers"][m][ri] = True
+            index["minimizers"][m][ri] = True # same as += 1<<ri
+
         index["references"].append(minimizer_set['meta'])
 
     return index
@@ -66,27 +70,28 @@ def make_index(fname):
 
 if __name__=='__main__':
     index = make_index('data/references.fasta')
-
-    # duplicate_minimizers = []
-    # for m, refs in index.items():
-    #     if len(refs)>1:
-    #         duplicate_minimizers.append(m)
-
     normalization = np.array([x['length']/x['n_minimizers'] for x in index["references"]])
+
+    overall_hits = np.zeros(len(index["references"]), dtype=np.int32)
     for seq in SeqIO.parse('data/queries.fasta', 'fasta'):
-        hit_count = np.zeros(len(index["references"]), dtype=np.int32)
         seq_str = str(seq.seq).upper().replace('-', '')
 
         minimizers = get_minimizers(seq_str)
+        hit_count = np.zeros(len(index["references"]), dtype=np.int32)
         for m in minimizers:
             if m in index["minimizers"]:
                 hit_count += index["minimizers"][m]
 
-        res = normalization*hit_count/len(seq.seq)
-        print(hit_count, np.round(res,2))
-        if np.max(res)<0.3:
+        # we expect hits to be proportional to the length of the sequence and the number of minimizers per reference
+        normalized_hits = normalization*hit_count/len(seq.seq)
+        # require at least 30% of the maximal hits and at least 10 hits
+        if np.max(normalized_hits)<0.3 or np.sum(hit_count)<10:
             print(seq.description, "no hit")
         else:
-            if np.where(res>0.3)[0].shape[0]>1:
-                for ri in np.where(res>0.3)[0]:
-                    print(seq.description, res[ri], index["references"][ri])
+            overall_hits += normalized_hits>0.3
+            ri = np.argmax(normalized_hits)
+            print(f"{seq.description}\t best hit={normalized_hits[ri]:1.2f} to reference {index['references'][ri]['description']}")
+
+    print("Hits statistics:")
+    for i, ref in enumerate(index["references"]):
+        print(f"{ref['description']}\t{overall_hits[i]}")
