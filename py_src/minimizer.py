@@ -93,6 +93,24 @@ if __name__=='__main__':
             ri = np.argmax(normalized_hits)
             print(f"{seq.description}\t best hit={normalized_hits[ri]:1.2f} to reference {index['references'][ri]['description']}")
 
-    print("Hits statistics:")
+    print("\nHits statistics:")
     for i, ref in enumerate(index["references"]):
-        print(f"{ref['description']}\t{overall_hits[i]}")
+        print(f"\t{ref['description']}\t{overall_hits[i]}")
+    ## we could offer the user to run the analysis on these datasets in reverse order of the number of hits
+
+
+    print(f"\nIndex statistics:")
+    print(f"\tNumber of references: {len(index['references'])}")
+    print(f"\tNumber of minimizers: {len(index['minimizers'])}")
+    print(f"\tNumber of minimizers per kb: {1000*np.sum([x['n_minimizers'] for x in index['references']])/np.sum([x['length'] for x in index['references']]):1.2f}")
+    for ref in index["references"]:
+        print(f"\t\t{ref['description']}\t{ref['n_minimizers']}")
+
+    # check uniformity of hash function
+    import matplotlib.pyplot as plt
+    plt.figure()
+    for start in range(0, 1<<29, 1<<22):
+        # compute hashes for 2^12 integers starting at start
+        hashes = [invertible_hash(x) for x in range(start, start+(1<<12))]
+        # sort and plot --> should be a straight line from 0 to 2^32-1
+        plt.plot(sorted(hashes))
